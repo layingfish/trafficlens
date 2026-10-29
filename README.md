@@ -1,5 +1,7 @@
 # TrafficLens 智能流量分析平台
 
+**在线演示：<https://layingfish.github.io/trafficlens/>**（浏览器直接打开，无需安装）
+
 基于 Telecom Italia（米兰 / 特伦蒂诺）与 ZTE（济南 4G 下行）区域级移动流量数据的 Web 应用，
 覆盖 **探索性分析 → 功能区聚类 → 预测数据构建 → 18 种预测算法训练（实时监控） → 预测展示与评估** 的完整流程。
 
