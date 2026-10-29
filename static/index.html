@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TrafficLens 智能流量分析平台</title>
+  <link rel="preload" href="static/vendor/fonts/source-serif-4-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="static/vendor/leaflet.css">
+  <link rel="stylesheet" href="static/style.css">
+  <script>
+    try { const t = localStorage.getItem('tl-theme'); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
+  </script>
+</head>
+<body>
+<header class="topbar">
+  <div class="topbar-inner">
+    <div class="brand"><b>TrafficLens</b><span>智能流量分析平台</span></div>
+    <nav class="metro" id="nav">
+      <a data-page="eda" class="active"><i></i><span>探索分析</span></a>
+      <a data-page="cluster"><i></i><span>功能区聚类</span></a>
+      <a data-page="dataset"><i></i><span>数据构建</span></a>
+      <a data-page="train"><i></i><span>算法训练</span></a>
+      <a data-page="eval"><i></i><span>预测评估</span></a>
+    </nav>
+    <div class="top-tools">
+      <label class="ds-picker">数据集 <select id="dsSelect"></select></label>
+      <span class="ro-badge ro-only">只读演示</span>
+      <span id="queueBadge" class="badge" title="训练队列"></span>
+      <button id="themeBtn" class="btn ghost small" title="切换明暗主题">深色</button>
+    </div>
+  </div>
+</header>
+
+<main id="main">
+  <!-- ================= EDA ================= -->
+  <section class="page active" id="page-eda">
+    <div class="page-head">
+      <h1>探索性分析</h1>
+      <p class="lede" id="edaSubtitle"></p>
+    </div>
+    <div class="kpis" id="edaKpis"></div>
+
+    <div class="card">
+      <div class="card-head"><div><h2>整体流量的时间动态</h2><p class="note">全部区域按小时求和。下方柱状图为每日总量，实色柱表示周末或节假日，半透明柱为工作日。</p></div></div>
+      <div class="chart h300" id="chTotal"></div>
+      <div class="chart h160" id="chDaily"></div>
+    </div>
+
+    <h3 class="section-title">时间动态</h3>
+    <div class="card controls-row">
+      <label class="grow">已选区域（最多 5 个，也可以在下方地图上点击添加）
+        <div class="chips" id="edaRegionChips"></div>
+      </label>
+      <label>添加区域
+        <input list="regionList" id="edaRegionInput" placeholder="输入区域名">
+        <datalist id="regionList"></datalist>
+      </label>
+      <label>时间粒度
+        <select id="edaFreq"></select>
+      </label>
+      <button class="btn" id="edaTop">选流量最高的 3 个</button>
+    </div>
+    <div class="grid2" style="margin-top:20px">
+      <div class="card span2"><div class="card-head"><div><h2>区域流量时间序列</h2><p class="note">拖动底部滑块缩放时间范围。</p></div></div><div class="chart h300" id="chSeries"></div></div>
+      <div class="card"><div class="card-head"><div><h2>日内模式：工作日与休息日</h2><p class="note">实线为工作日，虚线为周末或节假日，数值为小时均值。</p></div></div><div class="chart h300" id="chProfile"></div></div>
+      <div class="card"><div class="card-head"><div><h2>星期与小时热力图</h2><p class="note">所选区域合计的平均流量。</p></div></div><div class="chart h300" id="chHeat"></div></div>
+      <div class="card"><div class="card-head"><div><h2>分时段分布</h2><p class="note">所选区域合计，每个小时的流量箱线图。</p></div></div><div class="chart h300" id="chBox"></div></div>
+      <div class="card"><div class="card-head"><div><h2>自相关函数 ACF</h2><p class="note">滞后 0 至 14 天，峰值对应日周期与周周期。</p></div></div><div class="chart h300" id="chAcf"></div></div>
+      <div class="card span2"><div class="card-head"><div><h2>多季节分解 MSTL</h2><p class="note" id="decompTitle"></p></div></div><div class="chart h420" id="chDecomp"></div></div>
+      <div class="card span2"><div class="card-head"><div><h2>每日总量</h2><p class="note">实色柱表示周末或节假日，半透明柱为工作日。</p></div></div><div class="chart h220" id="chRegionDaily"></div></div>
+    </div>
+
+    <h3 class="section-title">空间动态</h3>
+    <div class="grid2">
+      <div class="card span2">
+        <div class="card-head"><div><h2>空间分布地图</h2><p class="note">切换统计指标、典型日 24 小时或逐日演变；点击区域可加入上方的时间分析。</p></div>
+          <div class="seg" id="mapMode">
+            <button data-mode="metric" class="on">统计指标</button>
+            <button data-mode="hour">典型日 24 小时</button>
+            <button data-mode="day">逐日演变</button>
+          </div>
+        </div>
+        <div class="controls-row tight">
+          <label id="metricCtl">指标
+            <select id="mapMetric">
+              <option value="mean">平均流量</option>
+              <option value="cv">变异系数 CV</option>
+              <option value="peak_hour">工作日峰值时刻</option>
+              <option value="offday_ratio">休息日与工作日之比</option>
+              <option value="night_share">夜间（0 至 6 时）占比</option>
+              <option value="day_night_ratio">昼夜比</option>
+            </select>
+          </label>
+          <label id="hourCtl" hidden>日类型
+            <select id="hourType"><option value="workday">工作日</option><option value="offday">休息日</option></select>
+          </label>
+          <label id="scaleCtl" hidden>色阶
+            <select id="hourScale"><option value="global">全时段统一</option><option value="frame">每帧独立</option></select>
+          </label>
+          <div class="slider-wrap" id="sliderCtl" hidden>
+            <button class="btn" id="playBtn">播放</button>
+            <input type="range" id="timeSlider" min="0" max="23" value="0">
+            <b id="sliderLabel"></b>
+          </div>
+        </div>
+        <div class="map-wrap"><div class="map" id="mapEda"></div></div>
+      </div>
+      <div class="card"><div class="card-head"><div><h2>全局 Moran's I，按小时</h2><p class="note" id="moranNote"></p></div></div><div class="chart h260" id="chMoranHour"></div></div>
+      <div class="card"><div class="card-head"><div><h2>全局 Moran's I，逐日</h2><p class="note">日总量的空间自相关随时间的变化。</p></div></div><div class="chart h260" id="chMoranDay"></div></div>
+      <div class="card"><div class="card-head"><div><h2>LISA 局部空间聚集</h2><p class="note">基于平均流量的对数值，显著性 p &lt; 0.05。</p></div></div><div class="map-wrap"><div class="map short" id="mapLisa"></div></div></div>
+      <div class="card"><div class="card-head"><div><h2>相关性随距离衰减</h2><p class="note">区域两两之间的时间序列相关系数与质心距离。</p></div></div><div class="chart h360" id="chDecay"></div></div>
+      <div class="card span2"><div class="card-head"><div><h2>区域统计排行</h2><p class="note">点击表头排序，点击行把该区域加入时间分析。</p></div></div><div class="table-wrap" id="regionTable"></div></div>
+    </div>
+  </section>
+
+  <!-- ================= CLUSTER ================= -->
+  <section class="page" id="page-cluster">
+    <div class="page-head"><h1>功能区聚类</h1><p class="lede">按区域的日内与周内流量模式聚类，再依据各簇相对其他簇的特征，推断它可能对应的城市功能区。</p></div>
+    <div class="card controls-row" id="clusterForm">
+      <label>聚类特征 <select id="clFeature"></select></label>
+      <label>归一化 <select id="clNorm"></select></label>
+      <label>算法 <select id="clMethod"></select></label>
+      <span id="clParams" class="controls-inline"></span>
+      <label>二维嵌入 <select id="clEmbed"><option value="pca">PCA</option><option value="tsne">t-SNE</option></select></label>
+      <button class="btn primary" id="clRun">运行聚类</button>
+      <button class="btn" id="clElbow">肘部法则选 k</button>
+    </div>
+    <div class="kpis" id="clScores" style="margin-top:36px"></div>
+    <div class="grid2">
+      <div class="card span2"><div class="card-head"><div><h2>功能区地图</h2><p class="note">点击区域查看它所属的簇。</p></div></div><div class="map-wrap"><div class="map" id="mapCluster"></div></div></div>
+      <div class="card"><div class="card-head"><div><h2>簇中心日内曲线，工作日</h2><p class="note">按区域均值归一，1 表示平均水平。</p></div></div><div class="chart h300" id="chCenterWd"></div></div>
+      <div class="card"><div class="card-head"><div><h2>簇中心日内曲线，休息日</h2><p class="note">相对工作日均值归一。</p></div></div><div class="chart h300" id="chCenterWe"></div></div>
+      <div class="card span2"><div class="card-head"><div><h2>簇中心周内曲线</h2><p class="note">从周一 0 时到周日 23 时。</p></div></div><div class="chart h260" id="chCenterWk"></div></div>
+      <div class="card"><div class="card-head"><div><h2>二维嵌入散点</h2><p class="note" id="embedNote"></p></div></div><div class="chart h360" id="chEmbed"></div></div>
+      <div class="card"><div class="card-head"><div><h2>功能区解释</h2><p class="note">由各项指标相对其他簇的 z 分数决定命名，悬停名称可查看依据。</p></div></div><div class="table-wrap" id="zoneTable"></div></div>
+      <div class="card span2" id="elbowCard" hidden><div class="card-head"><div><h2>K-Means 选 k</h2><p class="note">惯性越低越好，重点看拐点；轮廓系数越高越好。</p></div></div>
+        <div class="grid2 inner"><div class="chart h240" id="chElbow"></div><div class="chart h240" id="chSil"></div></div></div>
+    </div>
+  </section>
+
+  <!-- ================= DATASET ================= -->
+  <section class="page" id="page-dataset">
+    <div class="page-head"><h1>预测数据构建</h1><p class="lede">选择区域与时间粒度，设定输入长度 L 与输出长度 H，再按时间顺序切分训练集、验证集与测试集。</p></div>
+    <div class="grid2 builder">
+      <div class="card">
+        <div class="card-head"><div><h2>构建参数</h2></div></div>
+        <form id="dsForm" class="form-grid">
+          <label class="span2">区域范围
+            <select id="dsRegionMode">
+              <option value="all">全部区域</option>
+              <option value="top">流量最高的 N 个</option>
+              <option value="cluster">按聚类结果选择簇</option>
+              <option value="manual">手动选择</option>
+            </select>
+          </label>
+          <label id="dsTopN" hidden>N <input type="number" id="dsTopNVal" value="20" min="1"></label>
+          <label id="dsClusterSel" hidden class="span2">簇（需要先运行聚类）<select id="dsCluster"></select></label>
+          <label id="dsManual" hidden class="span2">区域（按住 ⌘ 或 Ctrl 多选）<select id="dsManualSel" multiple size="8"></select></label>
+          <label>时间粒度 <select id="dsFreq"></select></label>
+          <label>归一化 <select id="dsScaler"><option value="zscore">Z-score，逐区域</option><option value="minmax">Min-Max，逐区域</option><option value="none">不归一化</option></select></label>
+          <label>输入长度 L（步） <input type="number" id="dsL" value="24" min="2" max="2000"></label>
+          <label>输出长度 H（步） <input type="number" id="dsH" value="12" min="1" max="500"></label>
+          <p class="hint span2" id="dsLenHint"></p>
+          <div class="span2 presets" id="dsPresets"></div>
+          <label>训练集比例 <input type="number" id="dsTrain" value="0.7" min="0.1" max="0.9" step="0.05"></label>
+          <label>验证集比例 <input type="number" id="dsVal" value="0.1" min="0" max="0.5" step="0.05"></label>
+          <label>训练窗口步幅 <input type="number" id="dsTrainStride" value="1" min="1"></label>
+          <label>验证与测试窗口步幅 <input type="number" id="dsEvalStride" value="1" min="1"></label>
+          <label class="check span2"><input type="checkbox" id="dsLog"> 先做 log1p 变换，压缩长尾</label>
+          <label class="span2">名称（可选） <input type="text" id="dsName" placeholder="留空则自动生成"></label>
+          <button class="btn primary span2 rw" id="dsBuild" type="submit">构建数据集</button>
+          <p class="ro-note span2 ro-only">这是只读演示，不能构建新的数据集。可以在下方查看已经构建好的数据集。</p>
+        </form>
+      </div>
+      <div class="card">
+        <div class="card-head"><div><h2>构建结果</h2><p class="note" id="dsResultName"></p></div></div>
+        <div id="dsSummary" class="empty">尚未构建。在左侧设置参数后点击「构建数据集」。</div>
+      </div>
+      <div class="card span2"><div class="card-head"><div><h2>时间切分预览</h2><p class="note">所选区域的合计流量。蓝色区间为训练集，橙色为验证集，绿色为测试集。</p></div></div><div class="chart h260" id="chSplit"></div></div>
+      <div class="card span2"><div class="card-head"><div><h2>样本窗口示例</h2><p class="note">取一个测试窗口：用过去 L 步预测未来 H 步。</p></div></div><div class="chart h240" id="chWindow"></div></div>
+      <div class="card span2"><div class="card-head"><div><h2>已构建的数据集</h2><p class="note">点击行查看详情，并设为训练默认数据集。</p></div></div><div class="table-wrap" id="dsList"></div></div>
+    </div>
+  </section>
+
+  <!-- ================= TRAIN ================= -->
+  <section class="page" id="page-train">
+    <div class="page-head"><h1>预测算法面板</h1><p class="lede">勾选算法并调整核心参数后提交训练。任务进入队列依次执行，右侧实时显示损失曲线、进度和日志。</p></div>
+    <div class="train-layout">
+      <div class="card algo-panel">
+        <label class="block">训练数据集 <select id="trData"></select></label>
+        <div class="algo-list" id="algoList"></div>
+        <p class="ro-note ro-only">这是只读演示，不能提交新的训练。右侧可以查看已有训练任务的曲线、日志和结果。</p>
+        <div class="row gap rw">
+          <button class="btn primary grow" id="trSubmit">训练选中算法</button>
+          <button class="btn" id="trAll">全选</button>
+          <button class="btn" id="trNone">清空</button>
+        </div>
+      </div>
+      <div class="card param-panel">
+        <div class="card-head"><div><h2 id="paramTitle">算法参数</h2></div><button class="btn ghost small" id="paramReset">恢复默认</button></div>
+        <p class="param-desc" id="paramDesc"></p>
+        <form id="paramForm" class="form-grid"></form>
+      </div>
+      <div class="card monitor-panel">
+        <div class="card-head"><div><h2>训练任务</h2><p class="note">点击任务查看它的实时监控。</p></div></div>
+        <div class="job-list" id="jobList"></div>
+      </div>
+      <div class="card monitor-detail">
+        <div class="card-head"><div><h2 id="monTitle">实时监控</h2></div>
+          <div class="row gap"><span id="monStatus" class="status"></span><button class="btn danger small rw" id="monStop" hidden>停止</button></div></div>
+        <div class="progress"><div id="monBar"></div></div>
+        <div class="row between mon-line"><span id="monStage"></span><span id="monElapsed"></span></div>
+        <div class="grid2 inner">
+          <div><div class="chart-title">损失，归一化尺度</div><div class="chart h240" id="chLoss"></div></div>
+          <div><div class="chart-title">验证集 MAE，原始单位</div><div class="chart h240" id="chValMae"></div></div>
+        </div>
+        <div class="kpis small" id="monMetrics"></div>
+        <pre class="console" id="monLog"></pre>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= EVAL ================= -->
+  <section class="page" id="page-eval">
+    <div class="page-head"><h1>预测展示与评估</h1><p class="lede">对比真实值与预测值，查看核心评估指标、分步长与分区域误差，并横向比较多个模型。</p></div>
+    <div class="card">
+      <div class="card-head"><div><h2>模型排行榜</h2><p class="note">勾选多个模型进行对比，点击行查看该模型的详细预测。</p></div>
+        <div class="row gap"><label class="inline">数据集 <select id="evData"></select></label>
+          <label class="inline">排序 <select id="evSort"><option>MAE</option><option>RMSE</option><option>MAPE</option><option>sMAPE</option><option>WAPE</option><option>R2</option></select></label></div></div>
+      <div class="table-wrap" id="leaderboard"></div>
+    </div>
+    <div class="grid2" id="compareBlock" hidden>
+      <div class="card"><div class="card-head"><div><h2>多模型指标对比</h2></div><select id="cmpMetric"><option>MAE</option><option>RMSE</option><option>MAPE</option><option>sMAPE</option><option>WAPE</option><option>R2</option></select></div><div class="chart h300" id="chCmpBar"></div></div>
+      <div class="card"><div class="card-head"><div><h2>误差随预测步长变化</h2><p class="note" id="cmpHorizonNote"></p></div></div><div class="chart h300" id="chCmpH"></div></div>
+    </div>
+    <div id="evalDetail" hidden>
+      <h3 class="section-title" id="evTitle"></h3>
+      <p class="lede" id="evSub" style="margin:-8px 0 28px"></p>
+      <div class="kpis" id="evKpis"></div>
+      <div class="card controls-row">
+        <label>区域 <select id="evRegion"></select></label>
+        <label class="grow">预测步长 h <span class="row gap"><input type="range" id="evH" min="1" value="1" style="flex:1"><b id="evHLabel" class="serif"></b></span></label>
+        <a class="btn" id="evExportR" download>导出分区域指标 CSV</a>
+        <a class="btn" id="evExportP" download>导出全部预测 CSV</a>
+      </div>
+      <div class="grid2" style="margin-top:20px">
+        <div class="card span2"><div class="card-head"><div><h2>测试期真实值与预测值</h2><p class="note" id="evSeriesNote"></p></div></div><div class="chart h320" id="chEvSeries"></div></div>
+        <div class="card span2"><div class="card-head"><div><h2>单样本预测</h2><p class="note">拖动滑块切换测试样本。</p></div>
+          <div class="slider-wrap"><input type="range" id="evSample" min="0" value="0"><b id="evSampleLabel"></b></div></div>
+          <div class="chart h280" id="chEvSample"></div></div>
+        <div class="card"><div class="card-head"><div><h2>预测值与真实值散点</h2><p class="note">随机抽样 4000 个点，虚线为 y = x。</p></div></div><div class="chart h320" id="chEvScatter"></div></div>
+        <div class="card"><div class="card-head"><div><h2>残差分布</h2><p class="note">残差为预测值减真实值。</p></div></div><div class="chart h320" id="chEvResid"></div></div>
+        <div class="card"><div class="card-head"><div><h2>分步长误差</h2></div><select id="evHMetric"><option>MAE</option><option>RMSE</option><option>MAPE</option><option>sMAPE</option><option>WAPE</option><option>R2</option></select></div><div class="chart h300" id="chEvH"></div></div>
+        <div class="card"><div class="card-head"><div><h2>误差最大的区域</h2></div><select id="evRMetric"><option>MAE</option><option>RMSE</option><option>MAPE</option><option>WAPE</option><option>R2</option></select></div><div class="chart h300" id="chEvRegionBar"></div></div>
+        <div class="card span2"><div class="card-head"><div><h2>分区域误差地图</h2><p class="note" id="evMapNote"></p></div></div><div class="map-wrap"><div class="map" id="mapEval"></div></div></div>
+      </div>
+    </div>
+    <div id="evalEmpty" class="card empty">还没有完成的训练任务。请先到「算法训练」页训练模型。</div>
+  </section>
+</main>
+
+<div id="toast" class="toast"></div>
+
+<script src="static/vendor/echarts.min.js"></script>
+<script src="static/vendor/leaflet.js"></script>
+<script src="static/js/common.js"></script>
+<script src="static/js/eda.js"></script>
+<script src="static/js/cluster.js"></script>
+<script src="static/js/dataset.js"></script>
+<script src="static/js/train.js"></script>
+<script src="static/js/eval.js"></script>
+<script src="static/js/main.js"></script>
+</body>
+</html>

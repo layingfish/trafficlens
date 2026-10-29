@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+.DS_Store
+.claude/
+# training outputs (large; the static copy in docs/ carries what the site needs)
+results/
+# Jinan ZTE data is not published
+data/zte_*
